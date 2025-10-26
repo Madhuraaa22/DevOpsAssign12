@@ -215,3 +215,6 @@ docker stack rm devops-app
 ---
 
 **Note**: This project is designed for educational purposes and uses free-tier AWS resources. Ensure proper cleanup to avoid charges.
+
+
+<!-- Deployment triggered on 10/27/2025 00:57:38 -->
