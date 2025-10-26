@@ -1,0 +1,23 @@
+﻿---
+- name: Initialize Docker Swarm
+  hosts: swarm_manager
+  become: yes
+  tasks:
+    - name: Initialize Docker Swarm
+      command: docker swarm init --advertise-addr {{ ansible_default_ipv4.address }}
+      register: swarm_init_result
+      ignore_errors: yes
+
+    - name: Extract join token for workers
+      set_fact:
+        worker_token: "{{ swarm_init_result.stdout_lines[5] }}"
+
+- name: Join workers to Docker Swarm
+  hosts: swarm_workers
+  become: yes
+  tasks:
+    - name: Join Docker Swarm
+      command: "{{ worker_token }}"
+      vars:
+        worker_token: "{{ hostvars['swarm_manager']['worker_token'] }}"
+      ignore_errors: yes

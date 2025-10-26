@@ -1,0 +1,27 @@
+﻿---
+- name: Deploy Django application stack
+  hosts: swarm_manager
+  become: yes
+  tasks:
+    - name: Copy docker-compose.yml to manager
+      copy:
+        src: ../docker/docker-compose.yml
+        dest: /home/ubuntu/docker-compose.yml
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Copy Django app to manager
+      copy:
+        src: ../django_app/
+        dest: /home/ubuntu/django_app/
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Deploy stack to Docker Swarm
+      command: docker stack deploy -c /home/ubuntu/docker-compose.yml devops-app
+      become_user: ubuntu
+
+    - name: Wait for services to be ready
+      pause:
+        seconds: 30

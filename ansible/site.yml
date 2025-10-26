@@ -1,0 +1,13 @@
+﻿---
+- name: Complete DevOps Assignment Setup
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Install Docker and Docker Compose on all nodes
+      include: install-docker.yml
+
+    - name: Initialize Docker Swarm
+      include: init-swarm.yml
+
+    - name: Deploy Django application
+      include: deploy-app.yml
