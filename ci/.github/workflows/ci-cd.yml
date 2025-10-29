@@ -1,0 +1,123 @@
+﻿name: DevOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, ITA733 ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        cd django_app
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-django
+    
+    - name: Run tests
+      run: |
+        cd django_app
+        python manage.py test
+    
+    - name: Run linting
+      run: |
+        cd django_app
+        pip install flake8
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/ITA733'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.5.0
+    
+    - name: Terraform Init
+      run: |
+        cd terraform
+        terraform init
+    
+    - name: Terraform Plan
+      run: |
+        cd terraform
+        terraform plan
+    
+    - name: Terraform Apply
+      run: |
+        cd terraform
+        terraform apply -auto-approve
+    
+    - name: Get Terraform Outputs
+      id: terraform-outputs
+      run: |
+        cd terraform
+        echo "controller_ip=$(terraform output -raw controller_public_ip)" >> $GITHUB_OUTPUT
+        echo "manager_ip=$(terraform output -raw swarm_manager_public_ip)" >> $GITHUB_OUTPUT
+        echo "worker_a_ip=$(terraform output -raw swarm_worker_a_public_ip)" >> $GITHUB_OUTPUT
+        echo "worker_b_ip=$(terraform output -raw swarm_worker_b_public_ip)" >> $GITHUB_OUTPUT
+    
+    - name: Setup Ansible
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ansible
+    
+    - name: Update Ansible Inventory
+      run: |
+        cd ansible
+        sed -i "s/SWARM_MANAGER_IP/${{ steps.terraform-outputs.outputs.manager_ip }}/g" inventory.ini
+        sed -i "s/SWARM_WORKER_A_IP/${{ steps.terraform-outputs.outputs.worker_a_ip }}/g" inventory.ini
+        sed -i "s/SWARM_WORKER_B_IP/${{ steps.terraform-outputs.outputs.worker_b_ip }}/g" inventory.ini
+    
+    - name: Wait for instances to be ready
+      run: sleep 60
+    
+    - name: Install Docker on all nodes
+      run: |
+        cd ansible
+        ansible-playbook -i inventory.ini install_docker.yml --ssh-common-args="-o StrictHostKeyChecking=no"
+    
+    - name: Setup Docker Swarm
+      run: |
+        cd ansible
+        ansible-playbook -i inventory.ini setup_swarm.yml --ssh-common-args="-o StrictHostKeyChecking=no"
+    
+    - name: Deploy Application Stack
+      run: |
+        cd ansible
+        ansible-playbook -i inventory.ini deploy_stack.yml --ssh-common-args="-o StrictHostKeyChecking=no"
+    
+    - name: Run Selenium Tests
+      run: |
+        cd selenium
+        python -m pip install selenium
+        python test_app.py --url http://${{ steps.terraform-outputs.outputs.manager_ip }}:8000
+    
+    - name: Cleanup on failure
+      if: failure()
+      run: |
+        cd terraform
+        terraform destroy -auto-approve

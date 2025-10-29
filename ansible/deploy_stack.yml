@@ -1,0 +1,28 @@
+﻿---
+- name: Deploy Django PostgreSQL Stack
+  hosts: swarm_manager
+  become: yes
+  tasks:
+    - name: Copy docker-compose.yml to manager
+      copy:
+        src: ../docker/docker-compose.yml
+        dest: /home/ubuntu/docker-compose/docker-compose.yml
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Deploy stack
+      command: docker stack deploy -c /home/ubuntu/docker-compose/docker-compose.yml devops_app
+      become_user: ubuntu
+
+    - name: Wait for services to be ready
+      pause:
+        seconds: 30
+
+    - name: Show running services
+      command: docker service ls
+      become_user: ubuntu
+      register: services
+
+    - name: Display services
+      debug:
+        msg: "{{ services.stdout_lines }}"
